@@ -1,3 +1,6 @@
+
+
+
 var sensorController = (function () {
   var W1Temp = require('w1temp');
   var mqtt = require('mqtt');
@@ -12,21 +15,40 @@ var sensorController = (function () {
   var sensorIDs = [];
   var sensorControllers = [];
  
-  
+  var sensorInfo = {
+    '28-02184030d4ff': 'dephleg', 
+    '28-0118410d7eff': 'product'
+  };
+
+
 
 
   var sensorHandler = function (temperature) {
     var num = this.file.split('/').length - 2;
-    console.log('Sensor UID:', this.file.split('/')[num], 'Temperature: ', temperature.toFixed(3), '°C   ');
-    mqttClient.publish('stillpi/sensors/report', JSON.stringify({ 'sensorid': this.file.split('/')[num], 'value': temperature.toFixed(3), units: 'C'}), 
-      (err, granted) => {
-        if (typeof err !== "undefined") {
-          console.log("err: ", err);
-        };
-        if (typeof granted !== "undefined") {
-          console.log("granted: ", granted);
-        }
-      });
+    const id = this.file.split('/')[num]
+    console.log('Sensor UID:', id, 'Temperature: ', temperature.toFixed(3), '°C   ');
+    
+    if (id in sensorInfo) {
+      mqttClient.publish('stillpi/condenser/report', JSON.stringify({ 'sensorid': sensorInfo[id], 'value': temperature.toFixed(3), units: 'C'}), 
+        (err, granted) => {
+          if (typeof err !== "undefined") {
+            console.log("err: ", err);
+          };
+          if (typeof granted !== "undefined") {
+            console.log("granted: ", granted);
+          }
+        });
+    } else {
+      mqttClient.publish('stillpi/sensors/report', JSON.stringify({ 'sensorid': id, 'value': temperature.toFixed(3), units: 'C'}), 
+        (err, granted) => {
+          if (typeof err !== "undefined") {
+            console.log("err: ", err);
+          };
+          if (typeof granted !== "undefined") {
+            console.log("granted: ", granted);
+          }
+        });
+    }
   };
 
 
@@ -81,6 +103,11 @@ var sensorController = (function () {
 
     sensorIDs.forEach( (sensor, index) => {
 
+      if (sensor in sensorInfo) {  // If this sensor is a condenser sensor, don't announce it as a ordinary temperature sensor.  
+        return;
+      }
+
+      //  The sensor is not a condenser sensor so announce it.  
       console.log('Announcing: ', sensor, "MQTT broker connected: ", mqttClient.connected);
       var temp = sensorControllers[index].getTemperature();
       console.log("Sensor: ", sensor, ", temperature: ", temp);
