@@ -1,6 +1,7 @@
 
 
 
+
 var sensorController = (function () {
   var W1Temp = require('w1temp');
   var mqtt = require('mqtt');
@@ -15,7 +16,7 @@ var sensorController = (function () {
   var sensorIDs = [];
   var sensorControllers = [];
  
-  var sensorInfo = {
+  var condenserSensors = {
     '28-02184030d4ff': 'dephleg', 
     '28-0118410d7eff': 'product'
   };
@@ -28,8 +29,8 @@ var sensorController = (function () {
     const id = this.file.split('/')[num]
     console.log('Sensor UID:', id, 'Temperature: ', temperature.toFixed(3), '°C   ');
     
-    if (id in sensorInfo) {
-      mqttClient.publish('stillpi/condenser/report', JSON.stringify({ 'sensorid': sensorInfo[id], 'value': temperature.toFixed(3), units: 'C'}), 
+    if (id in condenserSensors) {
+      mqttClient.publish('stillpi/condenser/report', JSON.stringify({ 'sensorid': condenserSensors[id], 'value': temperature.toFixed(3), units: 'C'}), 
         (err, granted) => {
           if (typeof err !== "undefined") {
             console.log("err: ", err);
@@ -58,11 +59,11 @@ var sensorController = (function () {
     // Dispatch messages to the relevant handler.  
     switch (topic) {
       case 'stillpi/sensors/identify/invoke':
-        console.log('Announce message recieved.');
+        console.log('Temperature sensor announce message recieved.');
 	      var sensorClass = JSON.parse(message.toString('utf8')).class;
         if (sensorClass === 'all' || sensorClass === 'temperature') {
             console.log('Announcing sensors.');
-            announceSensors();
+            announceSensors('sensors');
         }
         break;
 
@@ -91,40 +92,77 @@ var sensorController = (function () {
         //   console.log("Skipping ping response message.", JSON.parse(message.toString('utf8')), (pingMessageType === 'call'));
         // }
       break;
+
+      case 'stillpi/condenser/identify/invoke':
+        console.log('Condenser temperature sensor announce message recieved.');
+	      var sensorClass = JSON.parse(message.toString('utf8')).class;
+        if (sensorClass === 'all' || sensorClass === 'temperature') {
+            console.log('Announcing condenser sensors.');
+            announceSensors('condenser');
+        }
+        break;
+
+      case 'stillpi/condenser/ping':
+        var pingMessageType = JSON.parse(message.toString('utf8')).type;
+        // console.log("Ping message type: ", pingMessageType);
+
+        if (pingMessageType === 'call') {
+          var pingSensorID = JSON.parse(message.toString('utf8')).sensorid;
+          // var pingSensorID = message.sensorid;
+          // console.log('Ping for sensor: ', pingSensorID);
+          if (condenserSensors.includes(pingSensorID)) {
+            console.log('Responding to ping on sensor: ', pingSensorID);
+            mqttClient.publish('stillpi/condenser/ping', JSON.stringify({'type': 'response', 'sensorid': pingSensorID}), 
+              (err, granted) => {
+                if (typeof err !== "undefined") {
+                  console.log("err: ", err);
+                };
+                if (typeof granted !== "undefined") {
+                  console.log("granted: ", granted);
+                }
+              });
+          }
+        } 
+        // else {
+        //   console.log("Skipping ping response message.", JSON.parse(message.toString('utf8')), (pingMessageType === 'call'));
+        // }
+        break;
     }
   };
 
 
-  var announceSensors = function () {
+  var announceSensors = function (type) {
 
     if (typeof sensorIDs !== "undefined") {
       console.log("ANNOUNCE SENSORS");
     }
 
     sensorIDs.forEach( (sensor, index) => {
-
-      if (sensor in sensorInfo) {  // If this sensor is a condenser sensor, don't announce it as a ordinary temperature sensor.  
-        return;
+      if ((sensor in condenserSensors) && (type === 'condenser)')) {  
+        publishSensor( 'condenser', sensor, index);
+      } else if (!(sensor in condenserSensors) && (type === 'sensor)')) {
+        publishSensor( 'sensors', sensor, index);
       }
-
-      //  The sensor is not a condenser sensor so announce it.  
-      console.log('Announcing: ', sensor, "MQTT broker connected: ", mqttClient.connected);
-      var temp = sensorControllers[index].getTemperature();
-      console.log("Sensor: ", sensor, ", temperature: ", temp);
-      mqttClient.publish('stillpi/sensors/identify/announce', JSON.stringify({ 'sensorid': sensor, 'class' : 'temperature', value: sensorControllers[index].getTemperature(), units: 'C'}), 
-        (err, granted) => {
-          if (typeof err !== "undefined") {
-            console.log("err: ", err);
-          };
-          if (typeof granted !== "undefined") {
-            console.log("granted: ", granted);
-          }
-        });
-      });
+    });
 
       console.log("Announcing completed.");
   };
 
+  const publishSensor = function (type, sensor, index) {
+
+    console.log('Announcing: ', sensor, "MQTT broker connected: ", mqttClient.connected);
+    var temp = sensorControllers[index].getTemperature();
+    console.log("Sensor: ", sensor, ", temperature: ", temp);
+    mqttClient.publish('stillpi/' + type + '/identify/announce', JSON.stringify({ 'sensorid': sensor, 'class' : 'temperature', value: sensorControllers[index].getTemperature(), units: 'C'}), 
+      (err, granted) => {
+        if (typeof err !== "undefined") {
+          console.log("err: ", err);
+        };
+        if (typeof granted !== "undefined") {
+          console.log("granted: ", granted);
+        }
+      });
+};
 
 
   return {
