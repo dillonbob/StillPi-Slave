@@ -2,6 +2,8 @@
 
 
 
+
+
 var sensorController = (function () {
   var W1Temp = require('w1temp');
   var mqtt = require('mqtt');
@@ -104,14 +106,16 @@ var sensorController = (function () {
 
       case 'stillpi/condenser/ping':
         var pingMessageType = JSON.parse(message.toString('utf8')).type;
-        // console.log("Ping message type: ", pingMessageType);
+        var pingMessage = JSON.parse(message.toString('utf8'));
+        // console.log("Ping message: ", pingMessage);
 
         if (pingMessageType === 'call') {
           var pingSensorID = JSON.parse(message.toString('utf8')).sensorid;
           // var pingSensorID = message.sensorid;
-          // console.log('Ping for sensor: ', pingSensorID);
-          if (condenserSensors.includes(pingSensorID)) {
-            console.log('Responding to ping on sensor: ', pingSensorID);
+          // console.log('Ping for sensor: ', pingSensorID, "  ", condenserSensors,  "  ", !(Object.keys(condenserSensors).find(key => condenserSensors[key] === pingSensorID) === ''));
+          // Object.keys(object).find(key => object[key] === value)
+          if (!(Object.keys(condenserSensors).find(key => condenserSensors[key] === pingSensorID) === '')) {  // This tests to see if this module is configured to be a condenser temperature sensor.  
+            // console.log('Responding to ping on sensor: ', pingSensorID);
             mqttClient.publish('stillpi/condenser/ping', JSON.stringify({'type': 'response', 'sensorid': pingSensorID}), 
               (err, granted) => {
                 if (typeof err !== "undefined") {
@@ -195,6 +199,8 @@ var sensorController = (function () {
             console.log('Connected to MQTT broker.')
             mqttClient.subscribe('stillpi/sensors/identify/invoke');
             mqttClient.subscribe('stillpi/sensors/ping');
+            mqttClient.subscribe('stillpi/condenser/identify/invoke');
+            mqttClient.subscribe('stillpi/condenser/ping');
             announceSensors();
           }); 
           mqttClient.on("error",function(error){
@@ -268,4 +274,4 @@ var controller = (function (sensorCtrl, mqttCtrl) {
 })(sensorController, mqttController);
 
 
-controller.init();
+controller.init()
